@@ -1,0 +1,634 @@
+import { useState, useEffect, useCallback } from 'react';
+import { 
+  Plus, 
+  Sparkles, 
+  Save, 
+  Download, 
+  Trash2, 
+  ChevronRight, 
+  Search,
+  Loader2,
+  X,
+  BookOpen,
+  History,
+  Copy,
+  Check,
+  Volume2
+} from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
+import { WordEntry, AIResponse } from './types';
+import { fetchWordDetails, fetchAudio } from './services/gemini';
+import { Tooltip } from './components/Tooltip';
+
+export default function App() {
+  const [inputWord, setInputWord] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [fetchingAudio, setFetchingAudio] = useState(false);
+  const [preview, setPreview] = useState<Partial<WordEntry> | null>(null);
+  const [savedWords, setSavedWords] = useState<WordEntry[]>([]);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+
+  // Load from localStorage
+  useEffect(() => {
+    const stored = localStorage.getItem('toefl_vocab');
+    if (stored) {
+      try {
+        setSavedWords(JSON.parse(stored));
+      } catch (e) {
+        console.error("Failed to parse stored words", e);
+      }
+    }
+  }, []);
+
+  // Save to localStorage
+  useEffect(() => {
+    localStorage.setItem('toefl_vocab', JSON.stringify(savedWords));
+  }, [savedWords]);
+
+  const handleAICompletion = async (wordToSearch?: string) => {
+    const targetWord = (typeof wordToSearch === 'string' ? wordToSearch : '').trim() || inputWord.trim();
+    if (!targetWord) return;
+    
+    setLoading(true);
+    setError(null);
+    try {
+      const data = await fetchWordDetails(targetWord);
+      
+      const newEntry: Partial<WordEntry> = {
+        id: crypto.randomUUID(),
+        word: targetWord,
+        ...data,
+        createdAt: Date.now()
+      };
+      
+      setPreview(newEntry);
+      if (typeof wordToSearch === 'string') setInputWord(targetWord);
+      
+      // Fetch audio in background
+      setFetchingAudio(true);
+      try {
+        const [audioUKBase64, audioUSBase64] = await Promise.all([
+          fetchAudio(targetWord, 'uk'),
+          fetchAudio(targetWord, 'us')
+        ]);
+        
+        setPreview(prev => prev ? {
+          ...prev,
+          audioUKBase64,
+          audioUSBase64
+        } : null);
+      } catch (audioErr) {
+        console.error("Failed to fetch audio in background:", audioErr);
+      } finally {
+        setFetchingAudio(false);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to fetch word details");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSave = () => {
+    if (!preview) return;
+    setSavedWords(prev => [preview as WordEntry, ...prev]);
+    setPreview(null);
+    setInputWord('');
+  };
+
+  const handleDelete = (id: string) => {
+    setSavedWords(prev => prev.filter(w => w.id !== id));
+  };
+
+  const exportData = (format: 'json' | 'csv') => {
+    if (savedWords.length === 0) return;
+
+    let content = '';
+    let fileName = `toefl_vocab_${new Date().toISOString().split('T')[0]}`;
+    let mimeType = '';
+
+    if (format === 'json') {
+      content = JSON.stringify(savedWords, null, 2);
+      fileName += '.json';
+      mimeType = 'application/json';
+    } else {
+      const headers = ['Word', 'Phonetic', 'Phonics', 'Part of Speech', 'Meaning (CN)', 'Meaning (JP)', 'English Definition', 'Examples', 'Collocations', 'Related Words'];
+      const rows = savedWords.map(w => [
+        w.word,
+        w.phonetic,
+        w.phonics,
+        w.partOfSpeech,
+        w.meaning,
+        w.japaneseMeaning,
+        w.englishDefinition,
+        w.examples.join(' | '),
+        w.collocations.join(' | '),
+        w.relatedWords.join(' | ')
+      ]);
+      content = [headers, ...rows].map(r => r.map(c => `"${c}"`).join(',')).join('\n');
+      fileName += '.csv';
+      mimeType = 'text/csv';
+    }
+
+    const blob = new Blob([content], { type: mimeType });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = fileName;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const copyToClipboard = (word: WordEntry | Partial<WordEntry>) => {
+    const text = `${word.word} [${word.phonetic}] (${word.partOfSpeech})\nPhonics: ${word.phonics}\nCN: ${word.meaning}\nJP: ${word.japaneseMeaning}\nDefinition: ${word.englishDefinition}\n\nExamples:\n${word.examples?.map(ex => `- ${ex}`).join('\n')}\n\nCollocations:\n${word.collocations?.join(', ')}\n\nRelated Words:\n${word.relatedWords?.join(', ')}`;
+    navigator.clipboard.writeText(text);
+    setCopiedId(word.id || 'preview');
+    setTimeout(() => setCopiedId(null), 2000);
+  };
+
+  const playAudio = async (base64?: string) => {
+    if (!base64) return;
+    try {
+      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
+      
+      // Decode base64 to ArrayBuffer
+      const binaryString = window.atob(base64);
+      const len = binaryString.length;
+      const bytes = new Uint8Array(len);
+      for (let i = 0; i < len; i++) {
+        bytes[i] = binaryString.charCodeAt(i);
+      }
+      
+      // Convert 16-bit PCM to Float32
+      // Gemini TTS returns 16-bit linear PCM
+      const pcmData = new Int16Array(bytes.buffer);
+      const float32Data = new Float32Array(pcmData.length);
+      for (let i = 0; i < pcmData.length; i++) {
+        float32Data[i] = pcmData[i] / 32768.0;
+      }
+
+      const buffer = audioContext.createBuffer(1, float32Data.length, 24000);
+      buffer.getChannelData(0).set(float32Data);
+
+      const source = audioContext.createBufferSource();
+      source.buffer = buffer;
+      source.connect(audioContext.destination);
+      source.start();
+      
+      // Cleanup
+      source.onended = () => {
+        audioContext.close();
+      };
+    } catch (e) {
+      console.error("Playback failed", e);
+    }
+  };
+
+  const filteredWords = savedWords.filter(w => 
+    w.word.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    w.meaning.includes(searchQuery)
+  );
+
+  return (
+    <div className="max-w-4xl mx-auto px-6 py-12">
+      {/* Header */}
+      <header className="flex items-center justify-between mb-12">
+        <div>
+          <h1 className="text-4xl font-bold tracking-tight text-[#1D1D1F]">Vocab AI</h1>
+          <p className="text-[#86868B] mt-2">TOEFL Academic Word Builder</p>
+        </div>
+        <div className="flex gap-3">
+          <button 
+            onClick={() => exportData('json')}
+            className="apple-button-secondary flex items-center gap-2"
+            disabled={savedWords.length === 0}
+          >
+            <Download size={18} />
+            JSON
+          </button>
+          <button 
+            onClick={() => exportData('csv')}
+            className="apple-button-secondary flex items-center gap-2"
+            disabled={savedWords.length === 0}
+          >
+            <Download size={18} />
+            CSV
+          </button>
+        </div>
+      </header>
+
+      {/* Input Section */}
+      <section className="mb-12">
+        <div className="relative flex gap-4">
+          <div className="relative flex-1">
+            <input 
+              type="text"
+              value={inputWord}
+              onChange={(e) => setInputWord(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleAICompletion()}
+              placeholder="Enter a word (e.g., ephemeral)"
+              className="apple-input !pl-12"
+            />
+            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-[#86868B]" size={20} />
+          </div>
+          <button 
+            onClick={() => handleAICompletion()}
+            disabled={loading || !inputWord.trim()}
+            className="apple-button-primary flex items-center gap-2 min-w-[140px] justify-center"
+          >
+            {loading ? (
+              <Loader2 className="animate-spin" size={20} />
+            ) : (
+              <>
+                <Sparkles size={20} />
+                AI Complete
+              </>
+            )}
+          </button>
+        </div>
+        
+        {error && (
+          <motion.p 
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="text-red-500 text-sm mt-3 ml-1"
+          >
+            {error}
+          </motion.p>
+        )}
+      </section>
+
+      {/* Preview Card */}
+      <AnimatePresence>
+        {preview && (
+          <motion.section 
+            initial={{ opacity: 0, scale: 0.95, y: 20 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.95, y: 20 }}
+            className="mb-12"
+          >
+            <div className="apple-card p-8 relative overflow-hidden">
+              <div className="absolute top-0 left-0 w-1 h-full bg-[#0071E3]" />
+              
+              <div className="flex justify-between items-start mb-6">
+                <div>
+                  <span className="text-xs font-semibold uppercase tracking-wider text-[#0071E3] mb-1 block">Preview</span>
+                  <div className="flex items-center gap-3">
+                    <h2 className="text-3xl font-bold">{preview.word}</h2>
+                    <span className="px-2 py-0.5 bg-blue-50 text-[#0071E3] text-xs font-bold rounded uppercase tracking-wider border border-blue-100">
+                      {preview.partOfSpeech}
+                    </span>
+                    <div className="flex gap-2 items-center">
+                      {preview.audioUSBase64 ? (
+                        <button 
+                          onClick={() => playAudio(preview.audioUSBase64!)}
+                          className="flex items-center gap-1.5 px-2.5 py-1.5 bg-[#F5F5F7] text-[#0071E3] rounded-full hover:bg-[#E8E8ED] transition-all text-xs font-semibold shadow-sm"
+                          title="American Pronunciation"
+                        >
+                          <Volume2 size={14} />
+                          <span>US</span>
+                        </button>
+                      ) : fetchingAudio ? (
+                        <div className="flex items-center gap-1.5 px-2.5 py-1.5 bg-[#F5F5F7] text-[#86868B] rounded-full text-xs font-semibold animate-pulse">
+                          <Loader2 size={14} className="animate-spin" />
+                          <span>US...</span>
+                        </div>
+                      ) : null}
+                      
+                      {preview.audioUKBase64 ? (
+                        <button 
+                          onClick={() => playAudio(preview.audioUKBase64!)}
+                          className="flex items-center gap-1.5 px-2.5 py-1.5 bg-[#F5F5F7] text-[#0071E3] rounded-full hover:bg-[#E8E8ED] transition-all text-xs font-semibold shadow-sm"
+                          title="British Pronunciation"
+                        >
+                          <Volume2 size={14} />
+                          <span>UK</span>
+                        </button>
+                      ) : fetchingAudio ? (
+                        <div className="flex items-center gap-1.5 px-2.5 py-1.5 bg-[#F5F5F7] text-[#86868B] rounded-full text-xs font-semibold animate-pulse">
+                          <Loader2 size={14} className="animate-spin" />
+                          <span>UK...</span>
+                        </div>
+                      ) : null}
+
+                      {preview.audioBase64 && !preview.audioUSBase64 && !preview.audioUKBase64 && (
+                        <button 
+                          onClick={() => playAudio(preview.audioBase64!)}
+                          className="flex items-center gap-1.5 px-2.5 py-1.5 bg-[#F5F5F7] text-[#0071E3] rounded-full hover:bg-[#E8E8ED] transition-all text-xs font-semibold shadow-sm"
+                          title="Pronunciation"
+                        >
+                          <Volume2 size={14} />
+                          <span>Play</span>
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-4 mt-1">
+                    <p className="text-xl text-[#86868B] font-mono">{preview.phonetic}</p>
+                    <div className="flex items-center gap-2 px-2 py-0.5 bg-orange-50 text-orange-600 text-[10px] font-bold rounded border border-orange-100 uppercase tracking-wider">
+                      Phonics: {preview.phonics}
+                    </div>
+                  </div>
+                </div>
+                <button 
+                  onClick={() => setPreview(null)}
+                  className="apple-button-ghost"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+
+              <div className="space-y-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div>
+                    <h3 className="text-sm font-semibold text-[#86868B] uppercase tracking-wider mb-2">Chinese Meaning</h3>
+                    <textarea 
+                      value={preview.meaning}
+                      onChange={(e) => setPreview({ ...preview, meaning: e.target.value })}
+                      className="w-full bg-[#F5F5F7] rounded-xl p-3 focus:outline-none focus:ring-1 focus:ring-[#0071E3] resize-none text-sm"
+                      rows={2}
+                    />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-semibold text-[#86868B] uppercase tracking-wider mb-2">Japanese Translation</h3>
+                    <textarea 
+                      value={preview.japaneseMeaning}
+                      onChange={(e) => setPreview({ ...preview, japaneseMeaning: e.target.value })}
+                      className="w-full bg-[#F5F5F7] rounded-xl p-3 focus:outline-none focus:ring-1 focus:ring-[#0071E3] resize-none text-sm"
+                      rows={2}
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <h3 className="text-sm font-semibold text-[#86868B] uppercase tracking-wider mb-2">English Definition</h3>
+                  <textarea 
+                    value={preview.englishDefinition}
+                    onChange={(e) => setPreview({ ...preview, englishDefinition: e.target.value })}
+                    className="w-full bg-[#F5F5F7] rounded-xl p-3 focus:outline-none focus:ring-1 focus:ring-[#0071E3] resize-none text-sm"
+                    rows={2}
+                  />
+                </div>
+
+                <div>
+                  <h3 className="text-sm font-semibold text-[#86868B] uppercase tracking-wider mb-2">Related Words (Click to search)</h3>
+                  <div className="flex flex-wrap gap-2">
+                    {preview.relatedWords?.map((rel, i) => (
+                      <button 
+                        key={i}
+                        onClick={() => handleAICompletion(rel)}
+                        className="px-3 py-1.5 bg-[#F5F5F7] hover:bg-[#E8E8ED] text-[#0071E3] text-sm rounded-full transition-all border border-transparent hover:border-[#0071E3]/20"
+                      >
+                        {rel}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div>
+                    <h3 className="text-sm font-semibold text-[#86868B] uppercase tracking-wider mb-3">TOEFL Examples</h3>
+                    <div className="space-y-3">
+                      {preview.examples?.map((ex, i) => (
+                        <textarea 
+                          key={i}
+                          value={ex}
+                          onChange={(e) => {
+                            const newEx = [...(preview.examples || [])];
+                            newEx[i] = e.target.value;
+                            setPreview({ ...preview, examples: newEx });
+                          }}
+                          className="w-full text-sm bg-[#F5F5F7] rounded-xl p-3 focus:outline-none focus:ring-1 focus:ring-[#0071E3] resize-none"
+                          rows={2}
+                        />
+                      ))}
+                    </div>
+                  </div>
+
+                  <div>
+                    <h3 className="text-sm font-semibold text-[#86868B] uppercase tracking-wider mb-3">Academic Collocations</h3>
+                    <div className="space-y-3">
+                      {preview.collocations?.map((col, i) => (
+                        <input 
+                          key={i}
+                          value={col}
+                          onChange={(e) => {
+                            const newCol = [...(preview.collocations || [])];
+                            newCol[i] = e.target.value;
+                            setPreview({ ...preview, collocations: newCol });
+                          }}
+                          className="w-full text-sm bg-[#F5F5F7] rounded-xl p-3 focus:outline-none focus:ring-1 focus:ring-[#0071E3]"
+                        />
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="pt-4 flex justify-end gap-3">
+                  <button 
+                    onClick={() => copyToClipboard(preview)}
+                    className="apple-button-secondary flex items-center gap-2"
+                  >
+                    {copiedId === 'preview' ? <Check size={20} /> : <Copy size={20} />}
+                    {copiedId === 'preview' ? 'Copied' : 'Copy'}
+                  </button>
+                  <button 
+                    onClick={handleSave}
+                    className="apple-button-primary flex items-center gap-2"
+                  >
+                    <Save size={20} />
+                    Save to List
+                  </button>
+                </div>
+              </div>
+            </div>
+          </motion.section>
+        )}
+      </AnimatePresence>
+
+      {/* Saved List */}
+      <section>
+        <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center gap-2">
+            <History size={20} className="text-[#86868B]" />
+            <h2 className="text-xl font-semibold">Saved Words ({savedWords.length})</h2>
+          </div>
+          <div className="relative w-64">
+            <input 
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search list..."
+              className="w-full bg-[#F5F5F7] border-none rounded-lg px-3 py-2 !pl-10 text-sm focus:ring-1 focus:ring-[#0071E3]"
+            />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-[#86868B]" size={14} />
+          </div>
+        </div>
+
+        <div className="space-y-4">
+          <AnimatePresence mode="popLayout">
+            {filteredWords.map((word) => (
+              <motion.div 
+                key={word.id}
+                layout
+                initial={{ opacity: 0, x: -20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: 20 }}
+                className="apple-card p-6 group hover:shadow-md transition-all"
+              >
+                <div className="flex justify-between items-start">
+                  <div className="flex-1">
+                    <div className="flex flex-col mb-3">
+                      <div className="flex items-center gap-3">
+                        <Tooltip content={
+                          <div className="space-y-2">
+                            <div className="flex items-center gap-2">
+                              <p className="text-sm font-bold text-[#1D1D1F]">{word.word}</p>
+                              <span className="text-[10px] font-bold text-[#0071E3] uppercase">{word.partOfSpeech}</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <p className="text-[10px] text-[#86868B] font-mono">{word.phonetic}</p>
+                              <span className="text-[9px] text-orange-600 font-bold bg-orange-50 px-1 rounded border border-orange-100 uppercase">{word.phonics}</span>
+                            </div>
+                            <div className="space-y-1">
+                              <p className="text-xs text-[#424245] leading-tight"><span className="font-bold">CN:</span> {word.meaning}</p>
+                              <p className="text-xs text-[#424245] leading-tight"><span className="font-bold">JP:</span> {word.japaneseMeaning}</p>
+                            </div>
+                            <p className="text-xs text-[#86868B] italic leading-tight border-t border-[#E5E5E7] pt-1">{word.englishDefinition}</p>
+                          </div>
+                        }>
+                          <h3 className="text-xl font-bold cursor-help border-b border-dotted border-[#D2D2D7] hover:border-[#0071E3] transition-colors">
+                            {word.word}
+                          </h3>
+                        </Tooltip>
+                        <span className="text-[10px] font-bold text-[#0071E3] uppercase tracking-widest bg-blue-50 px-1.5 py-0.5 rounded border border-blue-100">
+                          {word.partOfSpeech}
+                        </span>
+                        <div className="flex gap-1 items-center">
+                          {word.audioUSBase64 && (
+                            <button 
+                              onClick={() => playAudio(word.audioUSBase64!)}
+                              className="p-1.5 text-[#0071E3] hover:bg-blue-50 rounded-full transition-all flex items-center gap-1"
+                              title="US Pronunciation"
+                            >
+                              <Volume2 size={14} />
+                              <span className="text-[10px] font-bold">US</span>
+                            </button>
+                          )}
+                          {word.audioUKBase64 && (
+                            <button 
+                              onClick={() => playAudio(word.audioUKBase64!)}
+                              className="p-1.5 text-[#0071E3] hover:bg-blue-50 rounded-full transition-all flex items-center gap-1"
+                              title="UK Pronunciation"
+                            >
+                              <Volume2 size={14} />
+                              <span className="text-[10px] font-bold">UK</span>
+                            </button>
+                          )}
+                          {word.audioBase64 && !word.audioUSBase64 && !word.audioUKBase64 && (
+                            <button 
+                              onClick={() => playAudio(word.audioBase64!)}
+                              className="p-1.5 text-[#0071E3] hover:bg-blue-50 rounded-full transition-all flex items-center gap-1"
+                              title="Pronunciation"
+                            >
+                              <Volume2 size={14} />
+                              <span className="text-[10px] font-bold">Play</span>
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-3 mt-1">
+                        <span className="text-[#86868B] font-mono text-sm">{word.phonetic}</span>
+                        <div className="flex items-center gap-2 px-1.5 py-0.5 bg-orange-50 text-orange-600 text-[9px] font-bold rounded border border-orange-100 uppercase tracking-wider">
+                          Phonics: {word.phonics}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                      <div>
+                        <span className="text-[10px] font-bold uppercase tracking-widest text-[#86868B] block mb-1">Meanings</span>
+                        <div className="space-y-1">
+                          <p className="text-sm text-[#1D1D1F]"><span className="text-[#86868B] font-medium mr-1">CN:</span>{word.meaning}</p>
+                          <p className="text-sm text-[#1D1D1F]"><span className="text-[#86868B] font-medium mr-1">JP:</span>{word.japaneseMeaning}</p>
+                        </div>
+                      </div>
+                      <div>
+                        <span className="text-[10px] font-bold uppercase tracking-widest text-[#86868B] block mb-1">Definition</span>
+                        <p className="text-sm text-[#424245] leading-relaxed">{word.englishDefinition}</p>
+                      </div>
+                    </div>
+
+                    <div className="mb-4">
+                      <span className="text-[10px] font-bold uppercase tracking-widest text-[#86868B] block mb-2">Related Words</span>
+                      <div className="flex flex-wrap gap-2">
+                        {word.relatedWords.map((rel, i) => (
+                          <button 
+                            key={i}
+                            onClick={() => handleAICompletion(rel)}
+                            className="text-xs text-[#0071E3] bg-blue-50 px-2 py-1 rounded-full hover:bg-blue-100 transition-all border border-blue-100"
+                          >
+                            {rel}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <span className="text-[10px] font-bold uppercase tracking-widest text-[#86868B]">Examples</span>
+                        {word.examples.map((ex, i) => (
+                          <p key={i} className="text-sm text-[#424245] leading-relaxed italic">
+                            "{ex}"
+                          </p>
+                        ))}
+                      </div>
+                      <div className="space-y-2">
+                        <span className="text-[10px] font-bold uppercase tracking-widest text-[#86868B]">Collocations</span>
+                        <div className="flex flex-wrap gap-2">
+                          {word.collocations.map((col, i) => (
+                            <span key={i} className="text-xs bg-[#F5F5F7] text-[#424245] px-2 py-1 rounded-md">
+                              {col}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex flex-col gap-2 opacity-0 group-hover:opacity-100 transition-all">
+                    <button 
+                      onClick={() => copyToClipboard(word)}
+                      className="text-[#0071E3] p-2 hover:bg-blue-50 rounded-lg transition-all"
+                      title="Copy to clipboard"
+                    >
+                      {copiedId === word.id ? <Check size={18} /> : <Copy size={18} />}
+                    </button>
+                    <button 
+                      onClick={() => handleDelete(word.id)}
+                      className="text-[#E30000] p-2 hover:bg-red-50 rounded-lg transition-all"
+                      title="Delete word"
+                    >
+                      <Trash2 size={18} />
+                    </button>
+                  </div>
+                </div>
+              </motion.div>
+            ))}
+          </AnimatePresence>
+          
+          {savedWords.length === 0 && (
+            <div className="text-center py-20 bg-white rounded-2xl border border-dashed border-[#D2D2D7]">
+              <BookOpen size={48} className="mx-auto text-[#D2D2D7] mb-4" />
+              <p className="text-[#86868B]">No words saved yet. Start by entering a word above.</p>
+            </div>
+          )}
+          
+          {savedWords.length > 0 && filteredWords.length === 0 && (
+            <p className="text-center py-10 text-[#86868B]">No matches found for "{searchQuery}"</p>
+          )}
+        </div>
+      </section>
+    </div>
+  );
+}
