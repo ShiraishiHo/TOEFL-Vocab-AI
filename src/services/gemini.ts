@@ -12,7 +12,15 @@ export async function fetchWordDetails(word: string): Promise<AIResponse> {
   
   const response = await ai.models.generateContent({
     model: "gemini-3-flash-preview",
-    contents: `Analyze the TOEFL vocabulary word: "${word}". Provide its phonetic transcription (IPA), a simple phonics guide (e.g., "e-PHE-me-ral"), part of speech (e.g., noun, verb, adj), precise Chinese meaning, precise Japanese translation, a clear English definition, 2 TOEFL-style example sentences, 3 common academic collocations, and 3 related academic words or synonyms.`,
+    contents: `Analyze the TOEFL vocabulary word: "${word}". Provide its phonetic transcription (IPA), a simple phonics guide (e.g., "e-PHE-me-ral"), part of speech (e.g., noun, verb, adj), precise Chinese meaning, precise Japanese translation, a clear English definition, 2 TOEFL-style example sentences, 3 common academic collocations, 3 related academic words or synonyms, and a deep morphological analysis (etymology). 
+    
+    For the etymology, include:
+    1. Prefix: meaning and origin.
+    2. Root: core meaning and Latin/Greek origin.
+    3. Suffix: part of speech indicator and meaning.
+    4. Mnemonic: a one-sentence memory aid linking the parts.
+    
+    If the word has no clear roots (simple word), provide its etymological evolution.`,
     config: {
       responseMimeType: "application/json",
       responseSchema: {
@@ -41,9 +49,10 @@ export async function fetchWordDetails(word: string): Promise<AIResponse> {
             items: { type: Type.STRING },
             minItems: 3,
             maxItems: 3
-          }
+          },
+          etymology: { type: Type.STRING }
         },
-        required: ["phonetic", "phonics", "partOfSpeech", "meaning", "japaneseMeaning", "englishDefinition", "examples", "collocations", "relatedWords"]
+        required: ["phonetic", "phonics", "partOfSpeech", "meaning", "japaneseMeaning", "englishDefinition", "examples", "collocations", "relatedWords", "etymology"]
       }
     }
   });
