@@ -18,6 +18,7 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import { WordEntry, AIResponse } from './types';
 import { fetchWordDetails, fetchAudio } from './services/gemini';
+import { updateSM2, getDueCount } from './services/sm2';
 import { Tooltip } from './components/Tooltip';
 
 export default function App() {
@@ -29,6 +30,12 @@ export default function App() {
   const [searchQuery, setSearchQuery] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+
+  // Review State
+  const [isReviewing, setIsReviewing] = useState(false);
+  const [reviewQueue, setReviewQueue] = useState<WordEntry[]>([]);
+  const [currentReviewIndex, setCurrentReviewIndex] = useState(0);
+  const [showAnswer, setShowAnswer] = useState(false);
 
   // Load from localStorage
   useEffect(() => {
@@ -187,6 +194,34 @@ export default function App() {
     }
   };
 
+  const startReview = () => {
+    const now = Date.now();
+    const due = savedWords.filter(w => !w.nextReview || w.nextReview <= now);
+    if (due.length === 0) return;
+    setReviewQueue(due.sort(() => Math.random() - 0.5)); // Shuffle
+    setCurrentReviewIndex(0);
+    setIsReviewing(true);
+    setShowAnswer(false);
+  };
+
+  const handleReviewFeedback = (quality: number) => {
+    const currentWord = reviewQueue[currentReviewIndex];
+    const updatedWord = updateSM2(currentWord, quality);
+    
+    // Update savedWords
+    setSavedWords(prev => prev.map(w => w.id === updatedWord.id ? updatedWord : w));
+    
+    if (currentReviewIndex + 1 < reviewQueue.length) {
+      setCurrentReviewIndex(prev => prev + 1);
+      setShowAnswer(false);
+    } else {
+      setIsReviewing(false);
+      setReviewQueue([]);
+    }
+  };
+
+  const dueCount = getDueCount(savedWords);
+
   const filteredWords = savedWords.filter(w => 
     w.word.toLowerCase().includes(searchQuery.toLowerCase()) ||
     w.meaning.includes(searchQuery)
@@ -201,6 +236,18 @@ export default function App() {
           <p className="text-[#86868B] mt-2">TOEFL Academic Word Builder</p>
         </div>
         <div className="flex gap-3">
+          {dueCount > 0 && (
+            <button 
+              onClick={startReview}
+              className="relative apple-button-primary flex items-center gap-2 !bg-[#E30000] hover:!bg-[#C20000]"
+            >
+              <History size={18} />
+              Start Review
+              <span className="absolute -top-2 -right-2 bg-white text-[#E30000] text-[10px] font-bold px-1.5 py-0.5 rounded-full border border-[#E30000] shadow-sm">
+                {dueCount}
+              </span>
+            </button>
+          )}
           <button 
             onClick={() => exportData('json')}
             className="apple-button-secondary flex items-center gap-2"
@@ -647,6 +694,110 @@ export default function App() {
           )}
         </div>
       </section>
+      {/* Review Modal */}
+      <AnimatePresence>
+        {isReviewing && reviewQueue[currentReviewIndex] && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm px-6"
+          >
+            <motion.div 
+              initial={{ scale: 0.9, opacity: 0, y: 20 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              className="bg-white w-full max-w-xl rounded-3xl shadow-2xl overflow-hidden relative"
+            >
+              <div className="p-8">
+                <div className="flex justify-between items-center mb-8">
+                  <div className="flex items-center gap-2">
+                    <History size={20} className="text-[#E30000]" />
+                    <span className="text-sm font-semibold text-[#86868B] uppercase tracking-widest">
+                      Reviewing {currentReviewIndex + 1} / {reviewQueue.length}
+                    </span>
+                  </div>
+                  <button onClick={() => setIsReviewing(false)} className="p-2 hover:bg-[#F5F5F7] rounded-full transition-all">
+                    <X size={20} className="text-[#86868B]" />
+                  </button>
+                </div>
+
+                <div className="text-center mb-12">
+                  <h2 className="text-5xl font-bold mb-4">{reviewQueue[currentReviewIndex].word}</h2>
+                  <div className="flex justify-center gap-2">
+                    <button 
+                      onClick={() => playAudio(reviewQueue[currentReviewIndex].audioUSBase64)}
+                      className="flex items-center gap-1 px-3 py-1.5 bg-[#F5F5F7] text-[#0071E3] rounded-full text-xs font-bold"
+                    >
+                      <Volume2 size={14} /> US
+                    </button>
+                    <button 
+                      onClick={() => playAudio(reviewQueue[currentReviewIndex].audioUKBase64)}
+                      className="flex items-center gap-1 px-3 py-1.5 bg-[#F5F5F7] text-[#0071E3] rounded-full text-xs font-bold"
+                    >
+                      <Volume2 size={14} /> UK
+                    </button>
+                  </div>
+                </div>
+
+                <AnimatePresence mode="wait">
+                  {!showAnswer ? (
+                    <motion.div 
+                      key="question"
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -10 }}
+                      className="flex justify-center"
+                    >
+                      <button 
+                        onClick={() => setShowAnswer(true)}
+                        className="apple-button-primary w-full py-4 text-lg"
+                      >
+                        Show Answer
+                      </button>
+                    </motion.div>
+                  ) : (
+                    <motion.div 
+                      key="answer"
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="space-y-6"
+                    >
+                      <div className="bg-[#F5F5F7] p-6 rounded-2xl space-y-4">
+                        <div className="flex items-center gap-3">
+                          <span className="text-lg font-bold text-[#0071E3]">{reviewQueue[currentReviewIndex].phonetic}</span>
+                          <span className="text-xs font-bold uppercase tracking-widest text-[#86868B]">{reviewQueue[currentReviewIndex].partOfSpeech}</span>
+                        </div>
+                        <div className="grid grid-cols-2 gap-4">
+                          <p className="text-sm"><span className="font-bold text-[#86868B] mr-1">CN:</span> {reviewQueue[currentReviewIndex].meaning}</p>
+                          <p className="text-sm"><span className="font-bold text-[#86868B] mr-1">JP:</span> {reviewQueue[currentReviewIndex].japaneseMeaning}</p>
+                        </div>
+                        <p className="text-sm text-[#424245] italic leading-relaxed">"{reviewQueue[currentReviewIndex].examples[0]}"</p>
+                      </div>
+
+                      <div className="grid grid-cols-4 gap-3">
+                        {[
+                          { label: 'Forgot', value: 0, color: 'bg-red-500' },
+                          { label: 'Hard', value: 1, color: 'bg-orange-500' },
+                          { label: 'Good', value: 2, color: 'bg-blue-500' },
+                          { label: 'Easy', value: 3, color: 'bg-green-500' },
+                        ].map((btn) => (
+                          <button
+                            key={btn.value}
+                            onClick={() => handleReviewFeedback(btn.value)}
+                            className={`flex flex-col items-center gap-1 py-3 rounded-xl text-white font-bold transition-transform active:scale-95 ${btn.color}`}
+                          >
+                            <span className="text-xs uppercase tracking-tighter">{btn.label}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
