@@ -114,7 +114,7 @@ export default function App() {
       fileName += '.json';
       mimeType = 'application/json';
     } else {
-      const headers = ['Word', 'Phonetic', 'Phonics', 'Part of Speech', 'Meaning (CN)', 'Meaning (JP)', 'English Definition', 'Examples', 'Collocations', 'Related Words'];
+      const headers = ['Word', 'Phonetic', 'Phonics', 'Part of Speech', 'Meaning (CN)', 'Meaning (JP)', 'English Definition', 'Examples', 'Collocations', 'Related Words', 'Etymology'];
       const rows = savedWords.map(w => [
         w.word,
         w.phonetic,
@@ -125,7 +125,8 @@ export default function App() {
         w.englishDefinition,
         w.examples.join(' | '),
         w.collocations.join(' | '),
-        w.relatedWords.join(' | ')
+        w.relatedWords.join(' | '),
+        w.etymology
       ]);
       content = [headers, ...rows].map(r => r.map(c => `"${c}"`).join(',')).join('\n');
       fileName += '.csv';
@@ -142,7 +143,7 @@ export default function App() {
   };
 
   const copyToClipboard = (word: WordEntry | Partial<WordEntry>) => {
-    const text = `${word.word} [${word.phonetic}] (${word.partOfSpeech})\nPhonics: ${word.phonics}\nCN: ${word.meaning}\nJP: ${word.japaneseMeaning}\nDefinition: ${word.englishDefinition}\n\nExamples:\n${word.examples?.map(ex => `- ${ex}`).join('\n')}\n\nCollocations:\n${word.collocations?.join(', ')}\n\nRelated Words:\n${word.relatedWords?.join(', ')}`;
+    const text = `${word.word} [${word.phonetic}] (${word.partOfSpeech})\nPhonics: ${word.phonics}\nCN: ${word.meaning}\nJP: ${word.japaneseMeaning}\nDefinition: ${word.englishDefinition}\n\nEtymology:\n${word.etymology}\n\nExamples:\n${word.examples?.map(ex => `- ${ex}`).join('\n')}\n\nCollocations:\n${word.collocations?.join(', ')}\n\nRelated Words:\n${word.relatedWords?.join(', ')}`;
     navigator.clipboard.writeText(text);
     setCopiedId(word.id || 'preview');
     setTimeout(() => setCopiedId(null), 2000);
@@ -373,6 +374,16 @@ export default function App() {
                 </div>
 
                 <div>
+                  <h3 className="text-sm font-semibold text-[#86868B] uppercase tracking-wider mb-2">Morphological Analysis (Etymology)</h3>
+                  <textarea 
+                    value={preview.etymology}
+                    onChange={(e) => setPreview({ ...preview, etymology: e.target.value })}
+                    className="w-full bg-[#F5F5F7] rounded-xl p-3 focus:outline-none focus:ring-1 focus:ring-[#0071E3] resize-none text-sm font-mono leading-relaxed"
+                    rows={4}
+                  />
+                </div>
+
+                <div>
                   <h3 className="text-sm font-semibold text-[#86868B] uppercase tracking-wider mb-2">Related Words (Click to search)</h3>
                   <div className="flex flex-wrap gap-2">
                     {preview.relatedWords?.map((rel, i) => (
@@ -558,6 +569,13 @@ export default function App() {
                         <span className="text-[10px] font-bold uppercase tracking-widest text-[#86868B] block mb-1">Definition</span>
                         <p className="text-sm text-[#424245] leading-relaxed">{word.englishDefinition}</p>
                       </div>
+                    </div>
+
+                    <div className="mb-4">
+                      <span className="text-[10px] font-bold uppercase tracking-widest text-[#86868B] block mb-1">Morphological Analysis</span>
+                      <p className="text-sm text-[#424245] leading-relaxed whitespace-pre-wrap font-mono bg-[#F5F5F7] p-3 rounded-lg border border-[#E5E5E7]">
+                        {word.etymology}
+                      </p>
                     </div>
 
                     <div className="mb-4">
