@@ -4,6 +4,7 @@ import {
   Sparkles, 
   Save, 
   Download, 
+  Upload,
   Trash2, 
   ChevronRight, 
   Search,
@@ -150,6 +151,44 @@ export default function App() {
     URL.revokeObjectURL(url);
   };
 
+  const importData = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const content = e.target?.result as string;
+        const data = JSON.parse(content);
+        
+        if (Array.isArray(data)) {
+          // Basic validation: check if it looks like WordEntry[]
+          const validData = data.filter(item => item.word && item.meaning);
+          
+          if (validData.length > 0) {
+            setSavedWords(prev => {
+              // Merge avoiding duplicates by word
+              const existingWords = new Set(prev.map(w => w.word.toLowerCase()));
+              const newWords = validData.filter(w => !existingWords.has(w.word.toLowerCase()));
+              return [...newWords, ...prev];
+            });
+            alert(`Successfully imported ${validData.length} words!`);
+          } else {
+            alert("No valid word entries found in the file.");
+          }
+        } else {
+          alert("Invalid file format. Expected an array of words.");
+        }
+      } catch (err) {
+        console.error("Failed to import data:", err);
+        alert("Failed to import data. Please make sure the file is a valid JSON exported from this app.");
+      }
+    };
+    reader.readAsText(file);
+    // Reset input
+    event.target.value = '';
+  };
+
   const copyToClipboard = (word: WordEntry | Partial<WordEntry>) => {
     let text = `${word.word} [${word.phonetic}] (${word.partOfSpeech})\nPhonics: ${word.phonics}\nCN: ${word.meaning}\nJP: ${word.japaneseMeaning}\nDefinition: ${word.englishDefinition}\n\nEtymology:\n${word.etymology}`;
     
@@ -269,6 +308,16 @@ export default function App() {
               </span>
             </button>
           )}
+          <label className="apple-button-secondary flex items-center gap-2 cursor-pointer">
+            <Upload size={18} />
+            Import JSON
+            <input 
+              type="file" 
+              accept=".json" 
+              onChange={importData} 
+              className="hidden" 
+            />
+          </label>
           <button 
             onClick={() => exportData('json')}
             className="apple-button-secondary flex items-center gap-2"
