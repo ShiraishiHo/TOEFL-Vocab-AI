@@ -1,3 +1,10 @@
+export interface VerbConjugations {
+  past: string;
+  pastParticiple: string;
+  presentParticiple: string;
+  thirdPersonSingular: string;
+}
+
 export interface WordEntry {
   id: string;
   word: string;
@@ -11,6 +18,7 @@ export interface WordEntry {
   collocations: string[];
   relatedWords: string[];
   etymology: string;
+  verbConjugations?: VerbConjugations;
   audioUKBase64?: string;
   audioUSBase64?: string;
   audioBase64?: string;
@@ -33,4 +41,5 @@ export interface AIResponse {
   collocations: string[];
   relatedWords: string[];
   etymology: string;
+  verbConjugations?: VerbConjugations;
 }
