@@ -500,7 +500,7 @@ export default function App() {
                   />
                 </div>
 
-                {preview.verbConjugations && (
+                {preview.verbConjugations && preview.partOfSpeech?.toLowerCase().includes('verb') && (
                   <div>
                     <h3 className="text-sm font-semibold text-[#86868B] uppercase tracking-wider mb-2">Verb Conjugations</h3>
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -740,7 +740,7 @@ export default function App() {
                       </p>
                     </div>
 
-                    {word.verbConjugations && (
+                    {word.verbConjugations && word.partOfSpeech.toLowerCase().includes('verb') && (
                       <div className="mb-4">
                         <span className="text-[10px] font-bold uppercase tracking-widest text-[#86868B] block mb-2">Verb Conjugations</span>
                         <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
