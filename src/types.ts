@@ -15,6 +15,11 @@ export interface WordEntry {
   audioUSBase64?: string;
   audioBase64?: string;
   createdAt: number;
+  // SM-2 SRS Fields
+  interval?: number;
+  repetition?: number;
+  efactor?: number;
+  nextReview?: number;
 }
 
 export interface AIResponse {
