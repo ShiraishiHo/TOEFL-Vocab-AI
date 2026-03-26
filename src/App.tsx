@@ -14,8 +14,7 @@ import {
   History,
   Copy,
   Check,
-  Volume2,
-  Palette
+  Volume2
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { WordEntry, AIResponse } from './types';
@@ -30,9 +29,6 @@ export default function App() {
   const [preview, setPreview] = useState<Partial<WordEntry> | null>(null);
   const [savedWords, setSavedWords] = useState<WordEntry[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
-  const [appIcon, setAppIcon] = useState<string | null>(null);
-  const [generatingIcon, setGeneratingIcon] = useState(false);
-  const [showIconModal, setShowIconModal] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
@@ -286,38 +282,6 @@ export default function App() {
 
   const dueCount = getDueCount(savedWords);
 
-  const generateAppIcon = async () => {
-    setGeneratingIcon(true);
-    try {
-      const { GoogleGenAI } = await import("@google/genai");
-      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-      
-      const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash-image',
-        contents: {
-          parts: [
-            {
-              text: 'A professional, minimalist iOS app icon for "Vocab AI". Squircle shape. The design features a sleek, white stylized book icon with a subtle AI sparkle (star) in the corner. The background is a premium, deep Apple-blue gradient. Flat design, clean lines, high contrast, modern, academic, 1024x1024.',
-            },
-          ],
-        },
-      });
-
-      for (const part of response.candidates?.[0]?.content?.parts || []) {
-        if (part.inlineData) {
-          setAppIcon(`data:image/png;base64,${part.inlineData.data}`);
-          setShowIconModal(true);
-          break;
-        }
-      }
-    } catch (err) {
-      console.error("Failed to generate icon:", err);
-      alert("Failed to generate icon design. Please try again.");
-    } finally {
-      setGeneratingIcon(false);
-    }
-  };
-
   const filteredWords = savedWords.filter(w => 
     w.word.toLowerCase().includes(searchQuery.toLowerCase()) ||
     w.meaning.includes(searchQuery)
@@ -327,27 +291,9 @@ export default function App() {
     <div className="max-w-4xl mx-auto px-6 py-12">
       {/* Header */}
       <header className="flex items-center justify-between mb-12">
-        <div className="flex items-center gap-4">
-          {appIcon ? (
-            <img 
-              src={appIcon} 
-              alt="App Icon" 
-              className="w-16 h-16 rounded-[1.25rem] shadow-lg border border-black/5 cursor-pointer hover:scale-105 transition-transform"
-              onClick={() => setShowIconModal(true)}
-              referrerPolicy="no-referrer"
-            />
-          ) : (
-            <div 
-              className="w-16 h-16 bg-gradient-to-br from-[#0071E3] to-[#00c6ff] rounded-[1.25rem] flex items-center justify-center text-white shadow-lg cursor-pointer hover:scale-105 transition-transform"
-              onClick={generateAppIcon}
-            >
-              {generatingIcon ? <Loader2 size={32} className="animate-spin" /> : <Sparkles size={32} />}
-            </div>
-          )}
-          <div>
-            <h1 className="text-4xl font-bold tracking-tight text-[#1D1D1F]">Vocab AI</h1>
-            <p className="text-[#86868B] mt-1">TOEFL Academic Word Builder</p>
-          </div>
+        <div>
+          <h1 className="text-4xl font-bold tracking-tight text-[#1D1D1F]">Vocab AI</h1>
+          <p className="text-[#86868B] mt-2">TOEFL Academic Word Builder</p>
         </div>
         <div className="flex gap-3">
           {dueCount > 0 && (
@@ -1002,64 +948,6 @@ export default function App() {
             </motion.div>
           </motion.div>
         )}
-
-        {/* Icon Design Modal */}
-        <AnimatePresence>
-          {showIconModal && appIcon && (
-            <motion.div 
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-black/40 backdrop-blur-sm"
-              onClick={() => setShowIconModal(false)}
-            >
-              <motion.div 
-                initial={{ scale: 0.9, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                exit={{ scale: 0.9, opacity: 0 }}
-                className="bg-white rounded-[2.5rem] p-10 max-w-md w-full shadow-2xl text-center"
-                onClick={e => e.stopPropagation()}
-              >
-                <div className="mb-8 flex justify-center">
-                  <img 
-                    src={appIcon} 
-                    alt="App Icon Design" 
-                    className="w-48 h-48 rounded-[2.5rem] shadow-2xl border border-black/5"
-                    referrerPolicy="no-referrer"
-                  />
-                </div>
-                <h2 className="text-2xl font-bold mb-2">App Icon Design</h2>
-                <p className="text-[#86868B] mb-8 text-sm">
-                  A minimalist Apple-style design featuring a clean book symbol and AI sparkles on a premium blue gradient.
-                </p>
-                <div className="flex flex-col gap-3">
-                  <a 
-                    href={appIcon} 
-                    download="vocab-ai-icon.png"
-                    className="apple-button-primary w-full py-3 flex items-center justify-center gap-2"
-                  >
-                    <Download size={18} />
-                    Download Icon
-                  </a>
-                  <button 
-                    onClick={generateAppIcon}
-                    className="apple-button-secondary w-full py-3 flex items-center justify-center gap-2"
-                    disabled={generatingIcon}
-                  >
-                    <Palette size={18} />
-                    {generatingIcon ? "Designing..." : "Redesign Icon"}
-                  </button>
-                  <button 
-                    onClick={() => setShowIconModal(false)}
-                    className="text-[#86868B] text-sm font-medium hover:text-[#1D1D1F] transition-colors mt-2"
-                  >
-                    Close
-                  </button>
-                </div>
-              </motion.div>
-            </motion.div>
-          )}
-        </AnimatePresence>
       </AnimatePresence>
     </div>
   );
