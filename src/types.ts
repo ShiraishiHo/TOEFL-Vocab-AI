@@ -10,6 +10,7 @@ export interface WordEntry {
   examples: string[];
   collocations: string[];
   relatedWords: string[];
+  etymology: string;
   audioUKBase64?: string;
   audioUSBase64?: string;
   audioBase64?: string;
@@ -26,4 +27,5 @@ export interface AIResponse {
   examples: string[];
   collocations: string[];
   relatedWords: string[];
+  etymology: string;
 }
