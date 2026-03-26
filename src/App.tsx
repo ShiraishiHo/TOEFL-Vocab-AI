@@ -121,7 +121,7 @@ export default function App() {
       fileName += '.json';
       mimeType = 'application/json';
     } else {
-      const headers = ['Word', 'Phonetic', 'Phonics', 'Part of Speech', 'Meaning (CN)', 'Meaning (JP)', 'English Definition', 'Examples', 'Collocations', 'Related Words', 'Etymology'];
+      const headers = ['Word', 'Phonetic', 'Phonics', 'Part of Speech', 'Meaning (CN)', 'Meaning (JP)', 'English Definition', 'Examples', 'Collocations', 'Related Words', 'Etymology', 'Verb Conjugations'];
       const rows = savedWords.map(w => [
         w.word,
         w.phonetic,
@@ -133,7 +133,8 @@ export default function App() {
         w.examples.join(' | '),
         w.collocations.join(' | '),
         w.relatedWords.join(' | '),
-        w.etymology
+        w.etymology,
+        w.verbConjugations ? `Past: ${w.verbConjugations.past}, PP: ${w.verbConjugations.pastParticiple}, PresP: ${w.verbConjugations.presentParticiple}, 3rd: ${w.verbConjugations.thirdPersonSingular}` : ''
       ]);
       content = [headers, ...rows].map(r => r.map(c => `"${c}"`).join(',')).join('\n');
       fileName += '.csv';
@@ -150,7 +151,13 @@ export default function App() {
   };
 
   const copyToClipboard = (word: WordEntry | Partial<WordEntry>) => {
-    const text = `${word.word} [${word.phonetic}] (${word.partOfSpeech})\nPhonics: ${word.phonics}\nCN: ${word.meaning}\nJP: ${word.japaneseMeaning}\nDefinition: ${word.englishDefinition}\n\nEtymology:\n${word.etymology}\n\nExamples:\n${word.examples?.map(ex => `- ${ex}`).join('\n')}\n\nCollocations:\n${word.collocations?.join(', ')}\n\nRelated Words:\n${word.relatedWords?.join(', ')}`;
+    let text = `${word.word} [${word.phonetic}] (${word.partOfSpeech})\nPhonics: ${word.phonics}\nCN: ${word.meaning}\nJP: ${word.japaneseMeaning}\nDefinition: ${word.englishDefinition}\n\nEtymology:\n${word.etymology}`;
+    
+    if (word.verbConjugations) {
+      text += `\n\nConjugations:\n- Past: ${word.verbConjugations.past}\n- Past Participle: ${word.verbConjugations.pastParticiple}\n- Present Participle: ${word.verbConjugations.presentParticiple}\n- 3rd Person Singular: ${word.verbConjugations.thirdPersonSingular}`;
+    }
+
+    text += `\n\nExamples:\n${word.examples?.map(ex => `- ${ex}`).join('\n')}\n\nCollocations:\n${word.collocations?.join(', ')}\n\nRelated Words:\n${word.relatedWords?.join(', ')}`;
     navigator.clipboard.writeText(text);
     setCopiedId(word.id || 'preview');
     setTimeout(() => setCopiedId(null), 2000);
@@ -430,6 +437,46 @@ export default function App() {
                   />
                 </div>
 
+                {preview.verbConjugations && (
+                  <div>
+                    <h3 className="text-sm font-semibold text-[#86868B] uppercase tracking-wider mb-2">Verb Conjugations</h3>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                      <div className="bg-[#F5F5F7] p-3 rounded-xl">
+                        <span className="text-[10px] font-bold text-[#86868B] uppercase block mb-1">Past</span>
+                        <input 
+                          value={preview.verbConjugations.past}
+                          onChange={(e) => setPreview({ ...preview, verbConjugations: { ...preview.verbConjugations!, past: e.target.value } })}
+                          className="w-full bg-transparent text-sm font-semibold focus:outline-none"
+                        />
+                      </div>
+                      <div className="bg-[#F5F5F7] p-3 rounded-xl">
+                        <span className="text-[10px] font-bold text-[#86868B] uppercase block mb-1">Past Part.</span>
+                        <input 
+                          value={preview.verbConjugations.pastParticiple}
+                          onChange={(e) => setPreview({ ...preview, verbConjugations: { ...preview.verbConjugations!, pastParticiple: e.target.value } })}
+                          className="w-full bg-transparent text-sm font-semibold focus:outline-none"
+                        />
+                      </div>
+                      <div className="bg-[#F5F5F7] p-3 rounded-xl">
+                        <span className="text-[10px] font-bold text-[#86868B] uppercase block mb-1">Pres. Part.</span>
+                        <input 
+                          value={preview.verbConjugations.presentParticiple}
+                          onChange={(e) => setPreview({ ...preview, verbConjugations: { ...preview.verbConjugations!, presentParticiple: e.target.value } })}
+                          className="w-full bg-transparent text-sm font-semibold focus:outline-none"
+                        />
+                      </div>
+                      <div className="bg-[#F5F5F7] p-3 rounded-xl">
+                        <span className="text-[10px] font-bold text-[#86868B] uppercase block mb-1">3rd Person</span>
+                        <input 
+                          value={preview.verbConjugations.thirdPersonSingular}
+                          onChange={(e) => setPreview({ ...preview, verbConjugations: { ...preview.verbConjugations!, thirdPersonSingular: e.target.value } })}
+                          className="w-full bg-transparent text-sm font-semibold focus:outline-none"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 <div>
                   <h3 className="text-sm font-semibold text-[#86868B] uppercase tracking-wider mb-2">Related Words (Click to search)</h3>
                   <div className="flex flex-wrap gap-2">
@@ -624,6 +671,30 @@ export default function App() {
                         {word.etymology}
                       </p>
                     </div>
+
+                    {word.verbConjugations && (
+                      <div className="mb-4">
+                        <span className="text-[10px] font-bold uppercase tracking-widest text-[#86868B] block mb-2">Verb Conjugations</span>
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                          <div className="bg-[#F5F5F7] px-3 py-2 rounded-lg border border-[#E5E5E7]">
+                            <span className="text-[8px] font-bold text-[#86868B] uppercase block">Past</span>
+                            <span className="text-xs font-semibold">{word.verbConjugations.past}</span>
+                          </div>
+                          <div className="bg-[#F5F5F7] px-3 py-2 rounded-lg border border-[#E5E5E7]">
+                            <span className="text-[8px] font-bold text-[#86868B] uppercase block">Past Part.</span>
+                            <span className="text-xs font-semibold">{word.verbConjugations.pastParticiple}</span>
+                          </div>
+                          <div className="bg-[#F5F5F7] px-3 py-2 rounded-lg border border-[#E5E5E7]">
+                            <span className="text-[8px] font-bold text-[#86868B] uppercase block">Pres. Part.</span>
+                            <span className="text-xs font-semibold">{word.verbConjugations.presentParticiple}</span>
+                          </div>
+                          <div className="bg-[#F5F5F7] px-3 py-2 rounded-lg border border-[#E5E5E7]">
+                            <span className="text-[8px] font-bold text-[#86868B] uppercase block">3rd Person</span>
+                            <span className="text-xs font-semibold">{word.verbConjugations.thirdPersonSingular}</span>
+                          </div>
+                        </div>
+                      </div>
+                    )}
 
                     <div className="mb-4">
                       <span className="text-[10px] font-bold uppercase tracking-widest text-[#86868B] block mb-2">Related Words</span>
