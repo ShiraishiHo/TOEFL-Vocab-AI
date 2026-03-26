@@ -14,6 +14,12 @@ export async function fetchWordDetails(word: string): Promise<AIResponse> {
     model: "gemini-3-flash-preview",
     contents: `Analyze the TOEFL vocabulary word: "${word}". Provide its phonetic transcription (IPA), a simple phonics guide (e.g., "e-PHE-me-ral"), part of speech (e.g., noun, verb, adj), precise Chinese meaning, precise Japanese translation, a clear English definition, 2 TOEFL-style example sentences, 3 common academic collocations, 3 related academic words or synonyms, and a deep morphological analysis (etymology). 
     
+    If the word is a verb, also provide its common conjugations:
+    - Past tense
+    - Past participle
+    - Present participle (-ing)
+    - Third-person singular (-s)
+    
     For the etymology, include:
     1. Prefix: meaning and origin.
     2. Root: core meaning and Latin/Greek origin.
@@ -50,7 +56,17 @@ export async function fetchWordDetails(word: string): Promise<AIResponse> {
             minItems: 3,
             maxItems: 3
           },
-          etymology: { type: Type.STRING }
+          etymology: { type: Type.STRING },
+          verbConjugations: {
+            type: Type.OBJECT,
+            properties: {
+              past: { type: Type.STRING },
+              pastParticiple: { type: Type.STRING },
+              presentParticiple: { type: Type.STRING },
+              thirdPersonSingular: { type: Type.STRING }
+            },
+            description: "Only provide if the word is a verb. Otherwise, omit or provide null."
+          }
         },
         required: ["phonetic", "phonics", "partOfSpeech", "meaning", "japaneseMeaning", "englishDefinition", "examples", "collocations", "relatedWords", "etymology"]
       }
