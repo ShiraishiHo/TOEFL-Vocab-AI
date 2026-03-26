@@ -166,8 +166,14 @@ export default function App() {
   const playAudio = async (base64?: string) => {
     if (!base64) return;
     try {
-      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
+      // iOS requires AudioContext to be created/resumed on user gesture
+      const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+      const audioContext = new AudioContextClass({ sampleRate: 24000 });
       
+      if (audioContext.state === 'suspended') {
+        await audioContext.resume();
+      }
+
       // Decode base64 to ArrayBuffer
       const binaryString = window.atob(base64);
       const len = binaryString.length;
@@ -176,9 +182,17 @@ export default function App() {
         bytes[i] = binaryString.charCodeAt(i);
       }
       
-      // Convert 16-bit PCM to Float32
-      // Gemini TTS returns 16-bit linear PCM
-      const pcmData = new Int16Array(bytes.buffer);
+      // Ensure alignment for Int16Array
+      // If the buffer is not aligned, we need to copy it to a new aligned buffer
+      let pcmData: Int16Array;
+      if (bytes.byteOffset % 2 === 0) {
+        pcmData = new Int16Array(bytes.buffer, bytes.byteOffset, bytes.byteLength / 2);
+      } else {
+        const alignedBuffer = new ArrayBuffer(bytes.byteLength);
+        new Uint8Array(alignedBuffer).set(bytes);
+        pcmData = new Int16Array(alignedBuffer);
+      }
+
       const float32Data = new Float32Array(pcmData.length);
       for (let i = 0; i < pcmData.length; i++) {
         float32Data[i] = pcmData[i] / 32768.0;
@@ -541,10 +555,15 @@ export default function App() {
                   </button>
                   <button 
                     onClick={handleSave}
-                    className="apple-button-primary flex items-center gap-2"
+                    disabled={fetchingAudio}
+                    className="apple-button-primary flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    <Save size={20} />
-                    Save to List
+                    {fetchingAudio ? (
+                      <Loader2 className="animate-spin" size={20} />
+                    ) : (
+                      <Save size={20} />
+                    )}
+                    {fetchingAudio ? 'Fetching Audio...' : 'Save to List'}
                   </button>
                 </div>
               </div>
@@ -795,18 +814,30 @@ export default function App() {
                 <div className="text-center mb-12">
                   <h2 className="text-5xl font-bold mb-4">{reviewQueue[currentReviewIndex].word}</h2>
                   <div className="flex justify-center gap-2">
-                    <button 
-                      onClick={() => playAudio(reviewQueue[currentReviewIndex].audioUSBase64)}
-                      className="flex items-center gap-1 px-3 py-1.5 bg-[#F5F5F7] text-[#0071E3] rounded-full text-xs font-bold"
-                    >
-                      <Volume2 size={14} /> US
-                    </button>
-                    <button 
-                      onClick={() => playAudio(reviewQueue[currentReviewIndex].audioUKBase64)}
-                      className="flex items-center gap-1 px-3 py-1.5 bg-[#F5F5F7] text-[#0071E3] rounded-full text-xs font-bold"
-                    >
-                      <Volume2 size={14} /> UK
-                    </button>
+                    {reviewQueue[currentReviewIndex].audioUSBase64 && (
+                      <button 
+                        onClick={() => playAudio(reviewQueue[currentReviewIndex].audioUSBase64)}
+                        className="flex items-center gap-1 px-3 py-1.5 bg-[#F5F5F7] text-[#0071E3] rounded-full text-xs font-bold hover:bg-[#E8E8ED] transition-all"
+                      >
+                        <Volume2 size={14} /> US
+                      </button>
+                    )}
+                    {reviewQueue[currentReviewIndex].audioUKBase64 && (
+                      <button 
+                        onClick={() => playAudio(reviewQueue[currentReviewIndex].audioUKBase64)}
+                        className="flex items-center gap-1 px-3 py-1.5 bg-[#F5F5F7] text-[#0071E3] rounded-full text-xs font-bold hover:bg-[#E8E8ED] transition-all"
+                      >
+                        <Volume2 size={14} /> UK
+                      </button>
+                    )}
+                    {reviewQueue[currentReviewIndex].audioBase64 && !reviewQueue[currentReviewIndex].audioUSBase64 && !reviewQueue[currentReviewIndex].audioUKBase64 && (
+                      <button 
+                        onClick={() => playAudio(reviewQueue[currentReviewIndex].audioBase64)}
+                        className="flex items-center gap-1 px-3 py-1.5 bg-[#F5F5F7] text-[#0071E3] rounded-full text-xs font-bold hover:bg-[#E8E8ED] transition-all"
+                      >
+                        <Volume2 size={14} /> Play
+                      </button>
+                    )}
                   </div>
                 </div>
 
